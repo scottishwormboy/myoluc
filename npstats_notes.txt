@@ -1,0 +1,195 @@
+#population genomics for LBB bats
+
+#SelEstim, various runs to try to get convergence
+
+#NPstat for Tajima D etc
+#create pileup file
+wkdir=$HOME/Datafiles/Bats/myoluc/pops/npstats
+npstat=$HOME/bin/npstat/npstat
+mkdir -p $wkdir
+cd $wkdir
+mkdir $wkdir/bams
+mkdir $wkdir/mpileup
+mkdir $wkdir/output
+cd $wkdir
+
+
+
+ln -s ~tmlill/Datafiles/Bats/myoluc/pops/bams/all* $wkdir/bams/.
+mkdir -p /scratch/stevep11/bams
+find ~tmlill/Datafiles/Bats/myoluc/pops -name *NY_POST.*.bam|while read bamfile
+do
+  tbamfile=`echo $bamfile| sed 's/.*\///'`
+  samtools view -b $bamfile GL429776 -o /scratch/stevep11/bams/GL429776.$tbamfile
+done
+#Thomas has missed out lane 3
+
+samtools merge $wkdir/bams/GL429776.NY_POST.bam /scratch/stevep11/bams/GL429776.* 
+samtools index $wkdir/bams/GL429776.NY_POST.bam
+
+awk '$1=="GL429776" {print $2}' ~stevep11/Datafiles/Bats/myoluc/indvs/vcfs/trim100.lt1.txt > $wkdir/GL429776.snplist.txt
+
+samtools mpileup -r GL429776 ~/Datafiles/Bats/myoluc/pops/tml_bams/allPApost.bam > $wkdir/mpileup/allPApost.GL429776.pileup
+samtools mpileup -r GL429776 $wkdir/bams/GL429776.NY_POST.bam > $wkdir/mpileup/allNYpost.GL429776.pileup
+
+samtools mpileup -r GL429776 -l ~stevep11/Datafiles/Bats/myoluc/indvs/vcfs/trim100.lt1.txt ~/Datafiles/Bats/myoluc/pops/tml_bams/allPApost.bam > $wkdir/mpileup/allPApost.GL429776.snps.pileup &
+samtools mpileup -r GL429776 -l ~stevep11/Datafiles/Bats/myoluc/indvs/vcfs/trim100.lt1.txt  $wkdir/bams/GL429776.NY_POST.bam > $wkdir/mpileup/allNYpost.GL429776.snps.pileup &
+
+
+
+#run w/o snp file etc first
+$npstat -n 184 -l 1000 $wkdir/mpileup/allPApost.GL429776.pileup 
+mv $wkdir/mpileup/allPApost.GL429776.pileup.stats $wkdir/output/allPApost.GL429776.l1000.stats
+$npstat -n 184 -m 3 -l 10000 $wkdir/mpileup/allPApost.GL429776.pileup 
+mv $wkdir/mpileup/allPApost.GL429776.pileup.stats $wkdir/output/allPApost.GL429776.l10000.stats
+
+$npstat -n 184 -m 3 -l 10000 -snpfile $wkdir/GL429776.snplist.txt $wkdir/mpileup/allPApost.GL429776.pileup 
+mv $wkdir/mpileup/allPApost.GL429776.pileup.stats $wkdir/output/allPApost.GL429776.l10000.snp.stats
+#doesn't work
+
+$npstat -n 162 -m 3 -l 10000 $wkdir/mpileup/allNYpost.GL429776.pileup 
+mv $wkdir/mpileup/allNYpost.GL429776.pileup.stats $wkdir/output/allNYpost.GL429776.l10000.stats
+
+#use just selected SNPs
+$npstat -n 184 -m 3 -l 10000 $wkdir/mpileup/allPApost.GL429776.snps.pileup 
+mv $wkdir/mpileup/allPApost.GL429776.snps.pileup.stats $wkdir/output/allPApost.GL429776.l10000.snps.stats
+$npstat -n 162 -m 3 -l 10000 $wkdir/mpileup/allNYpost.GL429776.snps.pileup 
+mv $wkdir/mpileup/allNYpost.GL429776.snps.pileup.stats $wkdir/output/allNYpost.GL429776.l10000.snps.stats
+
+
+$npstat -n 184 -m 3 -l 50000 $wkdir/mpileup/allPApost.GL429776.snps.pileup 
+mv $wkdir/mpileup/allPApost.GL429776.snps.pileup.stats $wkdir/output/allPApost.GL429776.l50000.snps.stats
+$npstat -n 162 -m 3 -l 50000 $wkdir/mpileup/allNYpost.GL429776.snps.pileup 
+mv $wkdir/mpileup/allNYpost.GL429776.snps.pileup.stats $wkdir/output/allNYpost.GL429776.l50000.snps.stats
+
+
+#get heterozygosity
+workdir=$HOME/Datafiles/Bats/myoluc
+#ref=$workdir/ref/myoluc2.0.fa
+npstat=$HOME/bin/npstat/npstat
+
+
+mkdir $workdir/pops/npstats/rand
+mkdir $workdir/pops/npstats/rand/pileup
+mkdir $workdir/pops/npstats/rand/stats
+
+#get random 10k snps
+shuf -n 10000 $workdir/indvs/vcfs/trim100.lt1.txt | sort |uniq > $workdir/pops/npstats/rand/10ksamp.snps.txt
+grep '^G' $workdir/pops/npstats/rand/10ksamp.snps.txt > $workdir/pops/npstats/rand/10ksamp.snps.srt.txt
+grep '^A' $workdir/pops/npstats/rand/10ksamp.snps.txt >> $workdir/pops/npstats/rand/10ksamp.snps.srt.txt
+
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_1-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/10ksamp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample1.10k.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_2-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/10ksamp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample2.10k.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_3-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/10ksamp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample3.10k.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_4-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/10ksamp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample4.10k.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_5-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/10ksamp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample5.10k.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_6-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/10ksamp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample6.10k.mpileup &
+
+cat $workdir/pops/npstats/rand/pileup/sample1.10k.mpileup|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample1.10k.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample2.10k.mpileup|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample2.10k.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample3.10k.mpileup|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample3.10k.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample4.10k.mpileup|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample4.10k.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample5.10k.mpileup|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample5.10k.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample6.10k.mpileup|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample6.10k.chr1.mpileup
+
+#Sample 1. UPMI dur 24 (48)
+#Sample 2. UPMI pre 36 (72)
+#Sample 3. PA post 94 (188)
+#Sample 4. NY post 81 (162)
+#Sample 5. NY pre 26 (52)
+#Sample 6. PA pre 27 (54)
+
+#note that there are some invariant sites in the pileup, I'm not sure if these get winnowed out
+$npstat -n 48 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample1.10k.chr1.mpileup
+$npstat -n 72 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample2.10k.chr1.mpileup
+$npstat -n 188 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample3.10k.chr1.mpileup
+$npstat -n 162 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample4.10k.chr1.mpileup
+$npstat -n 52 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample5.10k.chr1.mpileup
+$npstat -n 54 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample6.10k.chr1.mpileup
+
+seq 1 6|while read sampno
+do
+ mv $workdir/pops/npstats/rand/pileup/sample${sampno}.10k.chr1.mpileup.stats $workdir/pops/npstats/rand/stats/sample${sampno}.10k.10kwin.stats
+done
+
+#into the one measure
+$npstat -n 48 -m 3 -l 100001 $workdir/pops/npstats/rand/pileup/sample1.10k.chr1.mpileup
+$npstat -n 72 -m 3 -l 100001 $workdir/pops/npstats/rand/pileup/sample2.10k.chr1.mpileup
+$npstat -n 188 -m 3 -l 100001 $workdir/pops/npstats/rand/pileup/sample3.10k.chr1.mpileup
+$npstat -n 162 -m 3 -l 100001 $workdir/pops/npstats/rand/pileup/sample4.10k.chr1.mpileup
+$npstat -n 52 -m 3 -l 100001 $workdir/pops/npstats/rand/pileup/sample5.10k.chr1.mpileup
+$npstat -n 54 -m 3 -l 100001 $workdir/pops/npstats/rand/pileup/sample6.10k.chr1.mpileup
+
+seq 1 6|while read sampno
+do
+ mv $workdir/pops/npstats/rand/pileup/sample${sampno}.10k.chr1.mpileup.stats $workdir/pops/npstats/rand/stats/sample${sampno}.10k.100kwin.stats
+done
+
+#repeat using larger set of snps, permute and use windows as samples to get estimate of standard error
+shuf -n 1000000 $workdir/indvs/vcfs/trim100.lt1.txt | sort |uniq > $workdir/pops/npstats/rand/1m.samp.snps.txt
+grep '^G' $workdir/pops/npstats/rand/1m.samp.snps.txt > $workdir/pops/npstats/rand/1m.samp.snps.srt.txt
+grep '^A' $workdir/pops/npstats/rand/1m.samp.snps.txt >> $workdir/pops/npstats/rand/1m.samp.snps.srt.txt
+
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_1-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/1m.samp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample1.1m.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_2-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/1m.samp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample2.1m.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_3-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/1m.samp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample3.1m.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_4-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/1m.samp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample4.1m.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_5-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/1m.samp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample5.1m.mpileup &
+samtools merge -u - ~/Datafiles/Bats/myoluc/pops/tml_bams/Sample_6-*.rmdup.bam | \
+   samtools mpileup -q 10 -l $workdir/pops/npstats/rand/1m.samp.snps.srt.txt - > $workdir/pops/npstats/rand/pileup/sample6.1m.mpileup &
+
+#shuffle to break any genome-location specific effects
+
+get_seeded_random()
+{
+  seed="$1"
+  openssl enc -aes-256-ctr -pass pass:"$seed" -nosalt \
+    </dev/zero 2>/dev/null
+}
+
+cat $workdir/pops/npstats/rand/pileup/sample1.1m.mpileup|shuf --random-source=<(get_seeded_random 51171)|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample1.1m.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample2.1m.mpileup|shuf --random-source=<(get_seeded_random 51171)|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample2.1m.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample3.1m.mpileup|shuf --random-source=<(get_seeded_random 51171)|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample3.1m.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample4.1m.mpileup|shuf --random-source=<(get_seeded_random 51171)|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample4.1m.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample5.1m.mpileup|shuf --random-source=<(get_seeded_random 51171)|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample5.1m.chr1.mpileup
+cat $workdir/pops/npstats/rand/pileup/sample6.1m.mpileup|shuf --random-source=<(get_seeded_random 51171)|awk 'BEGIN {OFS="\t"} {print "chr1",NR*10,$3,$4,$5,$6}' > $workdir/pops/npstats/rand/pileup/sample6.1m.chr1.mpileup
+#slightly different file lengths so not exactly the same, ignore for now
+
+
+$npstat -n 48 -m 3 -l 100000 $workdir/pops/npstats/rand/pileup/sample1.1m.chr1.mpileup
+$npstat -n 72 -m 3 -l 100000 $workdir/pops/npstats/rand/pileup/sample2.1m.chr1.mpileup
+$npstat -n 188 -m 3 -l 100000 $workdir/pops/npstats/rand/pileup/sample3.1m.chr1.mpileup
+$npstat -n 162 -m 3 -l 100000 $workdir/pops/npstats/rand/pileup/sample4.1m.chr1.mpileup
+$npstat -n 52 -m 3 -l 100000 $workdir/pops/npstats/rand/pileup/sample5.1m.chr1.mpileup
+$npstat -n 54 -m 3 -l 100000 $workdir/pops/npstats/rand/pileup/sample6.1m.chr1.mpileup
+
+seq 1 6|while read sampno
+do
+ mv $workdir/pops/npstats/rand/pileup/sample${sampno}.1m.chr1.mpileup.stats $workdir/pops/npstats/rand/stats/sample${sampno}.1m.1mwin.stats
+done
+
+#1000 windows
+$npstat -n 48 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample1.1m.chr1.mpileup
+$npstat -n 72 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample2.1m.chr1.mpileup
+$npstat -n 188 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample3.1m.chr1.mpileup
+$npstat -n 162 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample4.1m.chr1.mpileup
+$npstat -n 52 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample5.1m.chr1.mpileup
+$npstat -n 54 -m 3 -l 10000 $workdir/pops/npstats/rand/pileup/sample6.1m.chr1.mpileup
+
+seq 1 6|while read sampno
+do
+ mv $workdir/pops/npstats/rand/pileup/sample${sampno}.1m.chr1.mpileup.stats $workdir/pops/npstats/rand/stats/sample${sampno}.1m.1000.stats
+done
+
+
